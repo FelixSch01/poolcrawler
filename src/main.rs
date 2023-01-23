@@ -163,52 +163,53 @@ impl Topics {
             .text().unwrap();
         let document = Html::parse_document(&response);
         let selector = Selector::parse(r"li > div").unwrap();
-        for topic in document.select(&selector) {
-            match Topic::new(topic){
+        let document = document.select(&selector).collect::<Vec<_>>();
+        let len = document.len();
+        for (index, topic) in document.iter().enumerate() {
+            match Topic::new(*topic){
                 Some(mut x) => {
+                    print!(" {:>width$} of {:0>width$} ", index + 1, len, width=3);
                     x.load_exercises();
                     x.load_pdf_link();
+                    download_file(&x);
+                   
                     self.topics.push(x)
                 },
                 None => (),
             };
         }
     }
+}
 
-    pub fn download_files(&self) {
-        for topic in &self.topics {
-            let response = reqwest::blocking::Client::new()
-                .get(topic.pdf_link.clone())
-                .send().unwrap()
-                .bytes().unwrap();
+fn download_file(topic: &Topic) {
+    let start = Instant::now();
+
+    let response = reqwest::blocking::Client::new()
+        .get(topic.pdf_link.clone())
+        .send().unwrap()
+        .bytes().unwrap();
            
-            let limit = topic.title.chars().map(|c| c.len_utf8()).take(13).sum();
-            let mut file_name = topic.title[..limit].to_string().clone();
-            file_name.push_str(".pdf");
+    let limit = topic.title.chars().map(|c| c.len_utf8()).take(44).sum();
+    let mut file_name = topic.title[..limit].to_string().clone();
+    file_name.push_str(".pdf");
 
-            let mut file = File::create(file_name).unwrap();
-            let mut content = Cursor::new(response);
+    let mut file = File::create(file_name.clone()).unwrap();
+    let mut content = Cursor::new(response);
 
-            std::io::copy(&mut content, &mut file)
-                .expect("Could not create file!");
-        }
-    } 
+    std::io::copy(&mut content, &mut file)
+        .expect("Could not create file!");
+
+    println!("Downloaded {} in {}s.", file_name, start.elapsed().as_millis() as f64 / 1000.0);
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut topics = Topics::new();
-    println!("Loading avialble topics and exercises...");
+    println!("Loading avialble topics and downloading exercises...");
 
     let start = Instant::now();
     topics.load_topics();
     
-    println!("Completed in {}s", start.elapsed().as_secs());
-    println!("Downloading PDFs... (1 file per topic, containing all exercises)");
-
-    let start = Instant::now();
-
-    topics.download_files();
-    println!("Completed in {}s", start.elapsed().as_secs());
+    println!("Downloaded {} files in {}s.", topics.topics.len(),  start.elapsed().as_secs());
 
     Ok(())
 }
